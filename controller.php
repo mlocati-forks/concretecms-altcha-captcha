@@ -1,57 +1,90 @@
 <?php
+
 namespace Concrete\Package\AltchaCaptcha;
 
-use Concrete\Core\Package\Package;
 use Concrete\Core\Asset\Asset;
 use Concrete\Core\Asset\AssetList;
 use Concrete\Core\Captcha\Library as CaptchaLibrary;
-use Concrete\Package\AltchaCaptcha\Src\Captcha\AltchaController;
+use Concrete\Core\Entity\Package as PackageEntity;
+use Concrete\Core\Package\Package;
 
 class Controller extends Package
 {
     protected $pkgHandle = 'altcha_captcha';
-    protected $pkgVersion = '0.9.5';
+    protected $pkgVersion = '1.0.2';
     protected $appVersionRequired = '9.0.0';
+    protected $phpVersionRequired = '8.1';
 
     protected $pkgAutoloaderRegistries = [
-        'src/Captcha' => 'Concrete\Package\AltchaCaptcha\Captcha',
+        'src/' => 'Concrete\\Package\\AltchaCaptcha',
     ];
 
     public function getPackageName()
     {
-        return t('Altcha CAPTCHA');
+        return t('ALTCHA CAPTCHA');
     }
 
     public function getPackageDescription()
     {
-        return t('Self-hosted, privacy-friendly CAPTCHA using Altcha.');
+        return t('Self-hosted, privacy-friendly proof-of-work bot protection for Concrete CMS.');
     }
 
     public function on_start()
     {
+        $this->loadVendorAutoloader();
         $this->registerAssets();
-        require_once __DIR__ . '/vendor/autoload.php';
+
+        $router = $this->app->make('router');
+        (new RouteList())->loadRoutes($router);
     }
 
-    protected function registerAssets()
+    public function install()
     {
-        $assetList = \AssetList::getInstance();
+        $this->requireAltchaDependency();
+
+        $pkg = parent::install();
+
+        $this->ensureSecret();
+        $this->ensureCaptchaLibrary($pkg);
+        $this->registerAssets();
+
+        return $pkg;
+    }
+
+    public function upgrade()
+    {
+        $this->requireAltchaDependency();
+        parent::upgrade();
+
+        $this->ensureSecret();
+
+        $pkg = $this->getPackageEntity();
+        if ($pkg !== null) {
+            $this->ensureCaptchaLibrary($pkg);
+        }
+    }
+
+    public function uninstall()
+    {
+        parent::uninstall();
+
+        $db = $this->app->make('database')->connection();
+        if ($db->tableExists('AltchaCaptchaUsedChallenges')) {
+            $db->executeStatement('DROP TABLE AltchaCaptchaUsedChallenges');
+        }
+    }
+
+    protected function registerAssets(): void
+    {
+        $assetList = AssetList::getInstance();
 
         $assetList->register(
             'javascript',
             'altcha',
             'js/altcha.js',
-            ['position' => Asset::ASSET_POSITION_FOOTER],
-            $this
-        );
-
-        $assetList->register(
-            'javascript',
-            'glue',
-            'js/glue.js',
             [
                 'position' => Asset::ASSET_POSITION_FOOTER,
-                'depends' => ['altcha'],
+                'version' => $this->pkgVersion,
             ],
             $this
         );
@@ -60,22 +93,51 @@ class Controller extends Package
             'css',
             'altcha',
             'css/altcha.css',
-            ['position' => Asset::ASSET_POSITION_FOOTER],
+            [
+                'position' => Asset::ASSET_POSITION_FOOTER,
+                'version' => $this->pkgVersion,
+            ],
             $this
         );
     }
 
-    public function install()
+    private function ensureSecret(): void
     {
-        $pkg = parent::install();
-        CaptchaLibrary::add('altcha', t('Altcha Captcha'), $pkg);
-        $this->registerAssets();
-        return $pkg;
+        $config = $this->getConfig();
+        $secret = (string) $config->get('settings.hmac_key', '');
+
+        if (!preg_match('/^[a-f0-9]{64}$/i', $secret)) {
+            $config->save('settings.hmac_key', bin2hex(random_bytes(32)));
+        }
     }
 
-    public function getPackageConfigNamespace(): string
+    private function ensureCaptchaLibrary(PackageEntity $pkg): void
     {
-        return 'altcha';
+        if (!CaptchaLibrary::getByHandle('altcha')) {
+            CaptchaLibrary::add('altcha', t('ALTCHA CAPTCHA'), $pkg);
+        }
     }
 
+    private function loadVendorAutoloader(): void
+    {
+        if (class_exists('AltchaOrg\\Altcha\\V1\\Altcha')) {
+            return;
+        }
+
+        $vendorAutoloader = __DIR__ . '/vendor/autoload.php';
+        if (is_file($vendorAutoloader)) {
+            require_once $vendorAutoloader;
+        }
+    }
+
+    private function requireAltchaDependency(): void
+    {
+        $this->loadVendorAutoloader();
+
+        if (!class_exists('AltchaOrg\\Altcha\\V1\\Altcha')) {
+            throw new \RuntimeException(
+                t('ALTCHA PHP dependency is missing. Run "composer install --no-dev --optimize-autoloader" inside the package directory before installing or upgrading the package.')
+            );
+        }
+    }
 }

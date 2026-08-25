@@ -1,29 +1,29 @@
 <?php
+
 namespace Concrete\Package\AltchaCaptcha\Captcha;
 
-use Log;
-use Psr\Log\LogLevel;
-use AltchaOrg\Altcha\Altcha;
-use Concrete\Core\View\View;
+use Concrete\Core\Captcha\CaptchaInterface;
+use Concrete\Core\Controller\AbstractController;
 use Concrete\Core\Http\Request;
 use Concrete\Core\Logging\Channels;
-use Concrete\Core\Http\Client\Client;
-use AltchaOrg\Altcha\ChallengeOptions;
-use Concrete\Core\Support\Facade\Config;
-use Concrete\Core\Logging\LoggerAwareTrait;
-use Concrete\Core\Captcha\CaptchaInterface;
 use Concrete\Core\Logging\LoggerAwareInterface;
-use Concrete\Core\Controller\AbstractController;
+use Concrete\Core\Logging\LoggerAwareTrait;
+use Concrete\Core\Support\Facade\Url;
+use Concrete\Core\View\View;
+use Concrete\Package\AltchaCaptcha\Service\AltchaService;
+use Concrete\Package\AltchaCaptcha\Service\ReplayStore;
 
 class AltchaController extends AbstractController implements CaptchaInterface, LoggerAwareInterface
 {
     use LoggerAwareTrait;
 
-    protected $client;
+    private AltchaService $altcha;
+    private ReplayStore $replayStore;
 
-    public function __construct(Client $client)
+    public function __construct(AltchaService $altcha, ReplayStore $replayStore)
     {
-        $this->client = $client;
+        $this->altcha = $altcha;
+        $this->replayStore = $replayStore;
         parent::__construct();
     }
 
@@ -34,35 +34,28 @@ class AltchaController extends AbstractController implements CaptchaInterface, L
 
     public function display(array $options = []): string
     {
-        $session = $this->app->make('session');
-        $config = $this->app->make('config');
-
-        $hmacKey = $config->get('altcha_captcha.settings.hmac_key');
-
-        if (!$hmacKey) {
-            echo '<div class="alert alert-warning">' . t('Altcha is not configured correctly.') . '<br/>' . t('The HMAC key must be a valid 64-character hexadecimal string.') . '</div>';
-            return '';
-        } else {
-
-            $altcha = new \AltchaOrg\Altcha\Altcha($hmacKey);
-            $challenge = $altcha->createChallenge(new ChallengeOptions(
-                maxNumber: 50000,
-                expires: (new \DateTimeImmutable())->add(new \DateInterval('PT30S'))
-            ));
-            
-            $session->set('altcha_challenge', json_encode($challenge));
-            
-            $challengeJson = htmlspecialchars(json_encode($challenge), ENT_QUOTES, 'UTF-8');
-            
-            echo '<altcha-widget challengejson="' . $challengeJson . '" data-theme="light">';
-            echo '<input type="hidden" name="altcha" id="altcha-hidden" />';
-            echo '</altcha-widget>';
-            
-            View::getInstance()->requireAsset('javascript', 'altcha');
-            View::getInstance()->requireAsset('javascript', 'glue');
-            View::getInstance()->requireAsset('css', 'altcha');
+        if (!$this->altcha->isAvailable()) {
+            echo '<div class="alert alert-warning">' . h(t('ALTCHA is not configured correctly.')) . '</div>';
             return '';
         }
+
+        $challengeUrl = (string) Url::to('/altcha-captcha/challenge');
+
+        // The widget owns its hidden `altcha` form input. `auto="onsubmit"`
+        // keeps the CAPTCHA frictionless and fetches a fresh challenge only
+        // when the surrounding form is actually submitted.
+        echo '<altcha-widget'
+            . ' challengeurl="' . h($challengeUrl) . '"'
+            . ' auto="onsubmit"'
+            . ' floating'
+            . ' hidefooter'
+            . ' name="altcha"'
+            . '></altcha-widget>';
+
+        View::getInstance()->requireAsset('javascript', 'altcha');
+        View::getInstance()->requireAsset('css', 'altcha');
+
+        return '';
     }
 
     public function label()
@@ -72,81 +65,71 @@ class AltchaController extends AbstractController implements CaptchaInterface, L
 
     public function check(): bool
     {
-    
-        /** @var Request $request */
-        $request = Request::getInstance(); // More reliable in Concrete
+        $request = Request::getInstance();
+        $rawPayload = $request->request->get('altcha');
 
-        $rawPayload = $request->get('altcha');
-
-        if (is_array($rawPayload)) {
-            $rawPayload = reset($rawPayload);
-        }
-    
-        $session = $this->app->make('session');
-
-        if (!$rawPayload) {
-            Log::addWarning('[Altcha] Missing altcha payload.');
+        if (!is_string($rawPayload) || trim($rawPayload) === '') {
+            $this->logWarning('Missing ALTCHA payload.');
             return false;
         }
 
-        $decoded = base64_decode($rawPayload);
-        $payload = json_decode($decoded, true);
-
-        if (!is_array($payload)) {
-            Log::addWarning('[Altcha] Invalid base64 or JSON format.');
+        if (strlen($rawPayload) > 16384) {
+            $this->logWarning('ALTCHA payload exceeds the accepted size.');
             return false;
         }
 
-        $stored = $session->get('altcha_challenge');
-        if (!is_string($stored)) {
-            Log::addWarning('[Altcha] No challenge stored in session.');
-            return false;
-        }
-
-        $challenge = json_decode($stored, true);
-        if (!is_array($challenge)) {
-            Log::addWarning('[Altcha] Failed to decode challenge JSON.');
-            return false;
-        }
-
-        $hmacKey = $this->app->make('config')->get('altcha_captcha.settings.hmac_key');
-
-        $altcha = new \AltchaOrg\Altcha\Altcha($hmacKey);
-
-        $isValid = $altcha->verifySolution($payload, true, $challenge);
-
-        $session->remove('altcha_challenge');
-
-        if ($isValid) {
-
-            } else {
-                Log::addWarning('[Altcha] CAPTCHA verification failed.');
+        try {
+            if (!$this->altcha->verify($rawPayload)) {
+                $this->logWarning('ALTCHA verification failed.');
+                return false;
             }
-        return $isValid;
-    }
+        } catch (\Throwable $e) {
+            $this->logWarning('ALTCHA verification raised an exception.');
+            return false;
+        }
 
+        $replayKey = $this->altcha->getReplayKey($rawPayload);
+        if ($replayKey === null) {
+            $this->logWarning('ALTCHA payload has no usable replay key.');
+            return false;
+        }
+
+        try {
+            if (!$this->replayStore->claim($replayKey)) {
+                $this->logWarning('ALTCHA replay attempt rejected.');
+                return false;
+            }
+        } catch (\Throwable $e) {
+            // Fail closed: an unavailable replay store must not silently turn
+            // replay protection off.
+            $this->logWarning('ALTCHA replay protection is unavailable.');
+            return false;
+        }
+
+        return true;
+    }
 
     public function showInput()
     {
-        $config = $this->app->make('config');
-        $hmacKey = $config->get('altcha_captcha.settings.hmac_key');
-        if (!$hmacKey || strlen($hmacKey) !== 64) {
-            return '<div class="alert alert-warning">' . t('Altcha is not configured correctly.') . '</div>';
+        if (!$this->altcha->isAvailable()) {
+            return '<div class="alert alert-warning">'
+                . h(t('ALTCHA is not configured correctly. Reinstall or upgrade the package to generate a local secret.'))
+                . '</div>';
         }
+
         return '';
     }
 
     public function saveOptions($data)
     {
-        $session = $this->app->make('session');
-        $hmac = $data['hmac_key'] ?? '';
+        // No user-managed API credentials are required. Secrets are generated
+        // locally by the package during installation/upgrade.
+    }
 
-        $config = $this->app->make('config');
-
-        if (!preg_match('/^[a-f0-9]{64}$/i', $hmac)) {
-            $session->getFlashBag()->add('error', t('The HMAC key must be a valid 64-character hexadecimal string.'));
-            return;
+    private function logWarning(string $message): void
+    {
+        if ($this->logger) {
+            $this->logger->warning('[ALTCHA] ' . $message);
         }
-        $config->save('altcha_captcha.settings.hmac_key', strtolower($hmac));
     }
 }

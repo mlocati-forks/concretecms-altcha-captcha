@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schema xmlns="http://www.concrete5.org/doctrine-xml/0.5">
+    <table name="AltchaCaptchaUsedChallenges">
+        <field name="challengeHash" type="string" size="64">
+            <notnull/>
+            <key/>
+        </field>
+        <field name="expiresAt" type="integer" size="10">
+            <unsigned/>
+            <notnull/>
+        </field>
+        <index name="idxAltchaCaptchaExpiresAt">
+            <col>expiresAt</col>
+        </index>
+    </table>
+</schema>
