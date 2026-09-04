@@ -15,14 +15,15 @@ class ReplayStore
     }
 
     /**
-     * Atomically claim a successfully verified challenge.
-     *
-     * Only successful CAPTCHA submissions reach this method. Expired rows are
-     * removed first, so this table contains only a short rolling replay window.
+     * Atomically claim a successfully verified challenge until its signed
+     * expiration time. The primary key rejects concurrent replays as well.
      */
-    public function claim(string $challengeHash): bool
+    public function claim(string $challengeHash, int $expiresAt): bool
     {
         $now = time();
+        if ($expiresAt <= $now) {
+            return false;
+        }
 
         $this->connection->executeStatement(
             'DELETE FROM AltchaCaptchaUsedChallenges WHERE expiresAt < ?',
@@ -32,7 +33,7 @@ class ReplayStore
         try {
             $this->connection->insert('AltchaCaptchaUsedChallenges', [
                 'challengeHash' => $challengeHash,
-                'expiresAt' => $now + AltchaService::CHALLENGE_TTL,
+                'expiresAt' => $expiresAt,
             ]);
         } catch (UniqueConstraintViolationException $e) {
             return false;

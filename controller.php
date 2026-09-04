@@ -11,7 +11,7 @@ use Concrete\Core\Package\Package;
 class Controller extends Package
 {
     protected $pkgHandle = 'altcha_captcha';
-    protected $pkgVersion = '1.0.2';
+    protected $pkgVersion = '1.1.2';
     protected $appVersionRequired = '9.0.0';
     protected $phpVersionRequired = '8.1';
 
@@ -45,6 +45,7 @@ class Controller extends Package
         $pkg = parent::install();
 
         $this->ensureSecret();
+        $this->ensureDatabaseTables();
         $this->ensureCaptchaLibrary($pkg);
         $this->registerAssets();
 
@@ -57,6 +58,7 @@ class Controller extends Package
         parent::upgrade();
 
         $this->ensureSecret();
+        $this->ensureDatabaseTables();
 
         $pkg = $this->getPackageEntity();
         if ($pkg !== null) {
@@ -69,8 +71,10 @@ class Controller extends Package
         parent::uninstall();
 
         $db = $this->app->make('database')->connection();
-        if ($db->tableExists('AltchaCaptchaUsedChallenges')) {
-            $db->executeStatement('DROP TABLE AltchaCaptchaUsedChallenges');
+        foreach (['AltchaCaptchaRateLimits', 'AltchaCaptchaUsedChallenges'] as $table) {
+            if ($db->tableExists($table)) {
+                $db->executeStatement('DROP TABLE ' . $table);
+            }
         }
     }
 
@@ -101,6 +105,35 @@ class Controller extends Package
         );
     }
 
+
+    private function ensureDatabaseTables(): void
+    {
+        $db = $this->app->make('database')->connection();
+
+        if (!$db->tableExists('AltchaCaptchaUsedChallenges')) {
+            $db->executeStatement(
+                'CREATE TABLE AltchaCaptchaUsedChallenges ('
+                . 'challengeHash VARCHAR(64) NOT NULL, '
+                . 'expiresAt INT UNSIGNED NOT NULL, '
+                . 'PRIMARY KEY (challengeHash), '
+                . 'INDEX idxAltchaCaptchaExpiresAt (expiresAt)'
+                . ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+            );
+        }
+
+        if (!$db->tableExists('AltchaCaptchaRateLimits')) {
+            $db->executeStatement(
+                'CREATE TABLE AltchaCaptchaRateLimits ('
+                . 'rateKey VARCHAR(64) NOT NULL, '
+                . 'requestCount INT UNSIGNED NOT NULL DEFAULT 0, '
+                . 'expiresAt INT UNSIGNED NOT NULL, '
+                . 'PRIMARY KEY (rateKey), '
+                . 'INDEX idxAltchaCaptchaRateExpiresAt (expiresAt)'
+                . ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+            );
+        }
+    }
+
     private function ensureSecret(): void
     {
         $config = $this->getConfig();
@@ -120,7 +153,7 @@ class Controller extends Package
 
     private function loadVendorAutoloader(): void
     {
-        if (class_exists('AltchaOrg\\Altcha\\V1\\Altcha')) {
+        if (class_exists('AltchaOrg\\Altcha\\Altcha')) {
             return;
         }
 
@@ -134,7 +167,7 @@ class Controller extends Package
     {
         $this->loadVendorAutoloader();
 
-        if (!class_exists('AltchaOrg\\Altcha\\V1\\Altcha')) {
+        if (!class_exists('AltchaOrg\\Altcha\\Altcha')) {
             throw new \RuntimeException(
                 t('ALTCHA PHP dependency is missing. Run "composer install --no-dev --optimize-autoloader" inside the package directory before installing or upgrading the package.')
             );

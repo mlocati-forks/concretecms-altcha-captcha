@@ -13,4 +13,22 @@
             <col>expiresAt</col>
         </index>
     </table>
+    <table name="AltchaCaptchaRateLimits">
+        <field name="rateKey" type="string" size="64">
+            <notnull/>
+            <key/>
+        </field>
+        <field name="requestCount" type="integer" size="10">
+            <unsigned/>
+            <notnull/>
+            <default value="0"/>
+        </field>
+        <field name="expiresAt" type="integer" size="10">
+            <unsigned/>
+            <notnull/>
+        </field>
+        <index name="idxAltchaCaptchaRateExpiresAt">
+            <col>expiresAt</col>
+        </index>
+    </table>
 </schema>

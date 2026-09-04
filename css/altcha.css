@@ -1,80 +1,117 @@
-.altcha{background:var(--altcha-color-base, transparent);border:var(--altcha-border-width, 1px) solid var(--altcha-color-border, #a0a0a0);border-radius:var(--altcha-border-radius, 3px);color:var(--altcha-color-text, currentColor);display:flex;flex-direction:column;max-width:var(--altcha-max-width, 260px);position:relative}.altcha:focus-within{border-color:var(--altcha-color-border-focus, currentColor)}.altcha[data-floating]{background:var(--altcha-color-base, white);display:none;filter:drop-shadow(3px 3px 6px rgba(0,0,0,.2));left:-100%;position:fixed;top:-100%;width:var(--altcha-max-width, 260px);z-index:999999}.altcha[data-floating=top] .altcha-anchor-arrow{border-bottom-color:transparent;border-top-color:var(--altcha-color-border, #a0a0a0);bottom:-12px;top:auto}.altcha[data-floating=bottom]:focus-within:after{border-bottom-color:var(--altcha-color-border-focus, currentColor)}.altcha[data-floating=top]:focus-within:after{border-top-color:var(--altcha-color-border-focus, currentColor)}.altcha[data-floating]:not([data-state=unverified]){display:block}.altcha-anchor-arrow{border:6px solid transparent;border-bottom-color:var(--altcha-color-border, #a0a0a0);content:"";height:0;left:12px;position:absolute;top:-12px;width:0}.altcha-main{align-items:center;display:flex;gap:.4rem;padding:.7rem;position:relative}.altcha-code-challenge{background:var(--altcha-color-base, white);border:1px solid var(--altcha-color-border-focus, currentColor);border-radius:var(--altcha-border-radius, 3px);filter:drop-shadow(3px 3px 6px rgba(0,0,0,.2));padding:.5rem;position:absolute;top:2.5rem;z-index:9999999}.altcha-code-challenge>form{display:flex;flex-direction:column;gap:.5rem}.altcha-code-challenge-input{border:1px solid currentColor;border-radius:3px;box-sizing:border-box;outline:none;font-size:16px;padding:.35rem;width:220px}.altcha-code-challenge-input:focus{outline:2px solid color-mix(in srgb,var(--altcha-color-active, #1D1DC9) 20%,transparent)}.altcha-code-challenge-input:disabled{opacity:.7}.altcha-code-challenge-image{background-color:#fff;border:1px solid currentColor;border-radius:3px;box-sizing:border-box;object-fit:contain;height:50px;width:220px}.altcha-code-challenge-audio,.altcha-code-challenge-reload{background:color-mix(in srgb,var(--altcha-color-text, currentColor) 10%,transparent);border:0;border-radius:3px;color:var(--altcha-color-text, currentColor);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:.35rem}.altcha-code-challenge-audio:disabled,.altcha-code-challenge-reload:disabled{opacity:.7;pointer-events:none}.altcha-code-challenge-audio>*,.altcha-code-challenge-reload>*{height:20px;width:20px}.altcha-code-challenge-buttons{display:flex;justify-content:space-between}.altcha-code-challenge-buttons-left{display:flex;gap:.25rem}.altcha-code-challenge-verify{align-items:center;background:var(--altcha-color-active, #1D1DC9);border:0;border-radius:3px;color:#fff;cursor:pointer;display:flex;gap:.5rem;font-size:100%;padding:.35rem 1rem}.altcha-code-challenge-verify:disabled{opacity:.7;pointer-events:none}.altcha-code-challenge-arrow{border:6px solid transparent;border-bottom-color:var(--altcha-color-border, currentColor);content:"";height:0;left:.15rem;position:absolute;top:-12px;width:0}.altcha[data-floating=top] .altcha-code-challenge{top:-150px}.altcha[data-floating=top] .altcha-code-challenge-arrow{border-bottom-color:transparent;border-top-color:var(--altcha-color-border, currentColor);bottom:-12px;top:auto}.altcha-label{cursor:pointer;flex-grow:1}.altcha-logo{color:currentColor!important;opacity:.7}.altcha-logo:hover{opacity:1}.altcha-error{color:var(--altcha-color-error-text, #f23939);display:flex;font-size:.85rem;gap:.3rem;padding:0 .7rem .7rem}.altcha-footer{align-items:center;background-color:var(--altcha-color-footer-bg, transparent);display:flex;font-size:.75rem;opacity:.7;justify-content:end;padding:.2rem .7rem}.altcha-footer:hover{opacity:1}.altcha-footer a{color:currentColor}.altcha-checkbox{display:flex;align-items:center;justify-content:center;height:24px;position:relative;width:24px}.altcha-checkbox .altcha-spinner{bottom:0;left:0;position:absolute;right:0;top:0}.altcha-checkbox input{width:18px;height:18px;margin:0}.altcha-checkbox-verifying input{-webkit-appearance:none;-moz-appearance:none;appearance:none;opacity:0;pointer-events:none}.altcha-spinner{animation:altcha-spinner .75s infinite linear;transform-origin:center}@keyframes altcha-spinner{to{transform:rotate(360deg)}}
-
-/*
- * Concrete CMS integration theme
- *
- * Keep the bundled ALTCHA widget self-hosted while making the short-lived
- * floating verification state feel native to Bootstrap/Concrete themes.
- * CSS custom properties are inherited by the widget and therefore remain
- * easy for site themes to override without modifying this package.
- */
-altcha-widget {
-    --altcha-color-base: var(--bs-body-bg, #fff);
-    --altcha-color-text: var(--bs-body-color, #212529);
-    --altcha-color-border: var(--bs-border-color, #dee2e6);
-    --altcha-color-border-focus: var(--bs-primary, #0d6efd);
-    --altcha-color-active: var(--bs-primary, #0d6efd);
-    --altcha-color-error-text: var(--bs-danger, #dc3545);
-    --altcha-color-footer-bg: transparent;
-    --altcha-border-width: 1px;
-    --altcha-border-radius: .75rem;
-    --altcha-max-width: min(20rem, calc(100vw - 2rem));
+/* ALTCHA CAPTCHA 1.1.2 – package-owned, self-hosted verification UI. */
+.altcha-captcha {
+    --altcha-captcha-bg: var(--bs-body-bg, #fff);
+    --altcha-captcha-text: var(--bs-body-color, #212529);
+    --altcha-captcha-border: var(--bs-border-color, #dee2e6);
+    --altcha-captcha-primary: var(--bs-primary, #0d6efd);
+    --altcha-captcha-danger: var(--bs-danger, #dc3545);
+    --altcha-captcha-success: var(--bs-success, #198754);
 }
 
-altcha-widget .altcha[data-floating] {
-    filter: none;
+.altcha-captcha-honeypot {
+    position: absolute !important;
+    left: -10000px !important;
+    top: auto !important;
+    width: 1px !important;
+    height: 1px !important;
+    overflow: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+.altcha-captcha-status {
+    position: fixed;
+    right: 1rem;
+    bottom: 1rem;
+    z-index: 999999;
+    display: flex;
+    align-items: center;
+    gap: .7rem;
+    max-width: min(22rem, calc(100vw - 2rem));
+    min-height: 3.25rem;
+    padding: .8rem 1rem;
+    border: 1px solid var(--altcha-captcha-border);
+    border-radius: .75rem;
+    background: var(--altcha-captcha-bg);
+    color: var(--altcha-captcha-text);
     box-shadow:
         0 .75rem 1.75rem rgba(0, 0, 0, .12),
         0 .125rem .375rem rgba(0, 0, 0, .08);
-}
-
-altcha-widget .altcha[data-floating]:not([data-state="unverified"]) {
+    font-size: .925rem;
+    font-weight: 500;
+    line-height: 1.35;
     animation: altcha-captcha-enter 140ms ease-out both;
 }
 
-altcha-widget .altcha-main {
-    gap: .65rem;
-    min-height: 3.25rem;
-    padding: .8rem 1rem;
+.altcha-captcha-status[hidden] {
+    display: none !important;
 }
 
-altcha-widget .altcha-label {
-    line-height: 1.35;
-    font-size: .925rem;
-    font-weight: 500;
+.altcha-captcha-indicator {
+    position: relative;
+    flex: 0 0 1.35rem;
+    width: 1.35rem;
+    height: 1.35rem;
+    border: 2px solid rgba(13, 110, 253, .2);
+    border: 2px solid color-mix(in srgb, var(--altcha-captcha-primary) 25%, transparent);
+    border-top-color: var(--altcha-captcha-primary);
+    border-radius: 50%;
+    animation: altcha-captcha-spin .75s linear infinite;
 }
 
-altcha-widget .altcha-logo {
-    opacity: .55;
-    transition: opacity 120ms ease-in-out;
-}
-
-altcha-widget .altcha-logo:hover {
-    opacity: .8;
-}
-
-altcha-widget .altcha-checkbox {
-    color: var(--altcha-color-active);
-    flex: 0 0 24px;
-}
-
-altcha-widget .altcha-checkbox input {
-    accent-color: var(--altcha-color-active);
-}
-
-altcha-widget .altcha-error {
-    padding: 0 1rem .85rem;
-    line-height: 1.35;
-}
-
-altcha-widget .altcha[data-state="verified"] {
+.altcha-captcha[data-state="verified"] .altcha-captcha-status {
     border-color: var(--bs-success-border-subtle, #a3cfbb);
-    background: var(--bs-success-bg-subtle, var(--altcha-color-base));
+    background: var(--bs-success-bg-subtle, var(--altcha-captcha-bg));
 }
 
-altcha-widget .altcha[data-state="error"],
-altcha-widget .altcha[data-state="expired"] {
+.altcha-captcha[data-state="verified"] .altcha-captcha-indicator {
+    border: 0;
+    animation: none;
+}
+
+.altcha-captcha[data-state="verified"] .altcha-captcha-indicator::before {
+    content: "";
+    position: absolute;
+    left: .24rem;
+    top: .05rem;
+    width: .55rem;
+    height: .95rem;
+    border-right: 2px solid var(--altcha-captcha-success);
+    border-bottom: 2px solid var(--altcha-captcha-success);
+    transform: rotate(45deg);
+}
+
+.altcha-captcha[data-state="error"] .altcha-captcha-status {
     border-color: var(--bs-danger-border-subtle, #f1aeb5);
+    background: var(--bs-danger-bg-subtle, var(--altcha-captcha-bg));
+}
+
+.altcha-captcha[data-state="error"] .altcha-captcha-indicator {
+    border: 0;
+    animation: none;
+}
+
+.altcha-captcha[data-state="error"] .altcha-captcha-indicator::before,
+.altcha-captcha[data-state="error"] .altcha-captcha-indicator::after {
+    content: "";
+    position: absolute;
+    left: .62rem;
+    top: .12rem;
+    width: 2px;
+    height: 1.1rem;
+    background: var(--altcha-captcha-danger);
+}
+
+.altcha-captcha[data-state="error"] .altcha-captcha-indicator::before {
+    transform: rotate(45deg);
+}
+
+.altcha-captcha[data-state="error"] .altcha-captcha-indicator::after {
+    transform: rotate(-45deg);
+}
+
+@keyframes altcha-captcha-spin {
+    to { transform: rotate(360deg); }
 }
 
 @keyframes altcha-captcha-enter {
@@ -88,13 +125,17 @@ altcha-widget .altcha[data-state="expired"] {
     }
 }
 
-@media (prefers-reduced-motion: reduce) {
-    altcha-widget .altcha[data-floating]:not([data-state="unverified"]) {
-        animation: none;
-    }
-
-    altcha-widget .altcha-logo {
-        transition: none;
+@media (max-width: 575.98px) {
+    .altcha-captcha-status {
+        left: 1rem;
+        right: 1rem;
+        max-width: none;
     }
 }
 
+@media (prefers-reduced-motion: reduce) {
+    .altcha-captcha-status,
+    .altcha-captcha-indicator {
+        animation: none;
+    }
+}

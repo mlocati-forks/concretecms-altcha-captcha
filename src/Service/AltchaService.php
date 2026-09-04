@@ -2,13 +2,19 @@
 
 namespace Concrete\Package\AltchaCaptcha\Service;
 
-use AltchaOrg\Altcha\V1\Altcha;
-use AltchaOrg\Altcha\V1\ChallengeOptions;
-use AltchaOrg\Altcha\V1\Hasher\Algorithm;
+use AltchaOrg\Altcha\Algorithm\Pbkdf2;
+use AltchaOrg\Altcha\Altcha;
+use AltchaOrg\Altcha\CreateChallengeOptions;
+use AltchaOrg\Altcha\VerifySolutionOptions;
 use Concrete\Core\Package\PackageService;
 
 class AltchaService
 {
+    public const CHALLENGE_TTL = 300;
+    public const PBKDF2_COST = 1500;
+    public const COUNTER_MIN = 500;
+    public const COUNTER_MAX = 1200;
+
     private PackageService $packageService;
 
     public function __construct(PackageService $packageService)
@@ -16,76 +22,118 @@ class AltchaService
         $this->packageService = $packageService;
     }
 
-    /**
-     * Challenges are fetched when the widget actually needs one, so a longer
-     * lifetime does not make form entry fragile while still keeping replay
-     * records short-lived.
-     */
-    public const CHALLENGE_TTL = 300;
-
-    /**
-     * Keep the browser work noticeable to bots but normally unobtrusive to a
-     * human user. This is intentionally easy to tune in one place.
-     */
-    public const MAX_NUMBER = 250000;
-
     public function isAvailable(): bool
     {
-        return class_exists(Altcha::class) && $this->getSecret() !== null;
+        return class_exists(Altcha::class)
+            && class_exists(Pbkdf2::class)
+            && $this->getSecret() !== null;
     }
 
+    /**
+     * Create a PoW v2 challenge using PBKDF2/SHA-256 in deterministic mode.
+     *
+     * 1.1.2 intentionally uses a lighter interactive profile than the upstream
+     * example defaults because this package verifies ordinary form submissions
+     * invisibly. Rate limiting, honeypot and replay protection remain separate
+     * layers around the proof-of-work.
+     *
+     * A separate derived HMAC key-signature secret enables ALTCHA's fast
+     * verification path, so the server does not repeat the browser's PBKDF2
+     * work when a form is submitted.
+     */
     public function createChallenge(): array
     {
-        $altcha = $this->createClient();
-        $challenge = $altcha->createChallenge(new ChallengeOptions(
-            algorithm: Algorithm::SHA256,
-            maxNumber: self::MAX_NUMBER,
-            expires: (new \DateTimeImmutable())->modify('+' . self::CHALLENGE_TTL . ' seconds')
+        $challenge = $this->createClient()->createChallenge(new CreateChallengeOptions(
+            algorithm: new Pbkdf2(),
+            cost: self::PBKDF2_COST,
+            counter: random_int(self::COUNTER_MIN, self::COUNTER_MAX),
+            expiresAt: time() + self::CHALLENGE_TTL
+        ));
+
+        return $challenge->toArray();
+    }
+
+    /**
+     * Verify a submitted PoW v2 payload and expose non-sensitive diagnostics.
+     *
+     * @return array{verified:bool, expired:bool, invalidSignature:?bool, invalidSolution:?bool, time:float}
+     */
+    public function verify(string $payload): array
+    {
+        $result = $this->createClient()->verifySolution(new VerifySolutionOptions(
+            payload: $payload,
+            algorithm: new Pbkdf2()
         ));
 
         return [
-            'algorithm' => $challenge->algorithm,
-            'challenge' => $challenge->challenge,
-            'maxNumber' => $challenge->maxNumber,
-            'salt' => $challenge->salt,
-            'signature' => $challenge->signature,
+            'verified' => (bool) $result->verified,
+            'expired' => (bool) $result->expired,
+            'invalidSignature' => $result->invalidSignature,
+            'invalidSolution' => $result->invalidSolution,
+            'time' => (float) $result->time,
         ];
     }
 
-    public function verify(string $payload): bool
+    /**
+     * Extract replay metadata only after cryptographic verification succeeded.
+     *
+     * @return array{hash:string, expiresAt:int}|null
+     */
+    public function getReplayClaim(string $payload): ?array
     {
-        return $this->createClient()->verifySolution($payload, true);
+        $data = $this->decodePayload($payload);
+        if ($data === null) {
+            return null;
+        }
+
+        $signature = $data['challenge']['signature'] ?? null;
+        $expiresAt = $data['challenge']['parameters']['expiresAt'] ?? null;
+
+        if (!is_string($signature) || trim($signature) === '') {
+            return null;
+        }
+
+        if (!is_int($expiresAt) && !(is_string($expiresAt) && ctype_digit($expiresAt))) {
+            return null;
+        }
+
+        $expiresAt = (int) $expiresAt;
+        if ($expiresAt <= time()) {
+            return null;
+        }
+
+        return [
+            'hash' => hash('sha256', trim($signature)),
+            'expiresAt' => $expiresAt,
+        ];
     }
 
     /**
-     * Return a privacy-preserving, challenge-specific replay key.
-     *
-     * The signature is part of the ALTCHA payload and is authenticated by the
-     * HMAC check before this key is claimed. We store only its SHA-256 hash.
+     * Create a stable, privacy-preserving token for short-lived rate limiting.
      */
-    public function getReplayKey(string $payload): ?string
+    public function hashClientIdentifier(string $purpose, ?string $clientIp): string
     {
-        $decoded = base64_decode($payload, true);
-        if ($decoded === false) {
-            return null;
+        $secret = $this->getSecret();
+        if ($secret === null) {
+            throw new \RuntimeException('ALTCHA HMAC secret is not configured.');
         }
 
-        try {
-            $data = json_decode($decoded, true, 16, JSON_THROW_ON_ERROR);
-        } catch (\JsonException $e) {
-            return null;
+        $identifier = trim((string) $clientIp);
+        if ($identifier === '') {
+            $identifier = 'unknown-client';
         }
 
-        if (!is_array($data) || !isset($data['signature']) || !is_string($data['signature'])) {
-            return null;
-        }
+        return hash_hmac('sha256', $purpose . "\0" . $identifier, $secret);
+    }
 
-        $signature = trim($data['signature']);
-        if ($signature === '') {
-            return null;
-        }
-
-        return hash('sha256', $signature);
+    /**
+     * Return the public URL of the self-hosted worker script.
+     */
+    public function getWorkerUrl(): string
+    {
+        $controller = $this->packageService->getClass('altcha_captcha');
+        return rtrim((string) $controller->getRelativePath(), '/')
+            . '/js/vendor/altcha-pbkdf2-worker.js?v=' . rawurlencode((string) $controller->getPackageVersion());
     }
 
     private function createClient(): Altcha
@@ -95,7 +143,18 @@ class AltchaService
             throw new \RuntimeException('ALTCHA HMAC secret is not configured.');
         }
 
-        return new Altcha($secret);
+        // Keep signature duties cryptographically separated without requiring
+        // administrators to manage a second secret.
+        $keySignatureSecret = hash_hmac(
+            'sha256',
+            'altcha-captcha-v2-key-signature',
+            $secret
+        );
+
+        return new Altcha(
+            hmacSignatureSecret: $secret,
+            hmacKeySignatureSecret: $keySignatureSecret
+        );
     }
 
     private function getSecret(): ?string
@@ -112,5 +171,21 @@ class AltchaService
         }
 
         return strtolower($secret);
+    }
+
+    private function decodePayload(string $payload): ?array
+    {
+        $decoded = base64_decode($payload, true);
+        if ($decoded === false) {
+            return null;
+        }
+
+        try {
+            $data = json_decode($decoded, true, 32, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $e) {
+            return null;
+        }
+
+        return is_array($data) ? $data : null;
     }
 }

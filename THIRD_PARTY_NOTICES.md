@@ -1,5 +1,18 @@
 # Third-party notices
 
-The bundled `js/altcha.js` and `css/altcha.css` files originate from ALTCHA browser widget v2.0.3 included with the predecessor package and are distributed under ALTCHA's applicable open-source license.
+## ALTCHA PHP library
 
-The PHP library `altcha-org/altcha` is installed with Composer and is licensed by its upstream project.
+The PHP dependency `altcha-org/altcha` is installed with Composer and is distributed by the ALTCHA project under the MIT License.
+
+## ALTCHA browser PBKDF2 worker
+
+`js/vendor/altcha-pbkdf2-worker.js` is vendored from ALTCHA Widget v3.2.1:
+
+- Project: https://github.com/altcha-org/altcha
+- Source file: `dist/workers/pbkdf2.js`
+- Copyright (c) 2023-2026 Daniel Regeci, BAU Software s.r.o.
+- License: MIT
+
+A copy of the applicable MIT license is included at `licenses/ALTCHA-MIT.txt`.
+
+The surrounding Concrete CMS form integration, UI, same-origin challenge loading, rate limiting, honeypot and replay protection are package-owned code. No runtime request is made to ALTCHA or another third-party service.
